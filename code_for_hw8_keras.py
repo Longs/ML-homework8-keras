@@ -4,18 +4,22 @@
 
 import pdb
 import numpy as np
+from tensorflow.python.keras.backend import dropout
+np.random.seed(0)
 import itertools
-
+import tensorflow as tf
 import math as m 
 
-from keras.models import Sequential
-from keras.optimizers import SGD, Adam
-from keras.layers import Conv1D, Conv2D, Dense, Dropout, Flatten, MaxPooling2D
-from keras.utils import np_utils
-from keras.callbacks import Callback
-from keras.datasets import mnist
-from keras import backend as K
-from keras.initializers import VarianceScaling
+from tensorflow import keras
+
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.optimizers import SGD, Adam
+from tensorflow.keras.layers import Conv1D, Conv2D, Dense, Dropout, Flatten, MaxPooling2D
+#from tensorflow.keras.utils import np_utils
+from tensorflow.keras.callbacks import Callback
+from tensorflow.keras.datasets import mnist
+from tensorflow.keras import backend as K
+from tensorflow.keras.initializers import VarianceScaling
 from matplotlib import pyplot as plt
 
 ######################################################################
@@ -60,7 +64,8 @@ def get_data_set(name):
 
 class LossHistory(Callback):
     def on_train_begin(self, logs={}):
-        self.keys = ['loss', 'acc', 'val_loss', 'val_acc']
+        #self.keys = ['loss', 'acc', 'val_loss', 'val_acc']
+        self.keys = ['loss', 'accuracy', 'val_loss', 'val_accuracy']
         self.values = {}
         for k in self.keys:
             self.values['batch_'+k] = []
@@ -103,7 +108,8 @@ def run_keras(X_train, y_train, X_val, y_val, X_test, y_test, layers, epochs, sp
                   callbacks=[history], verbose=verbose)
     # Evaluate the model on validation data, if any
     if X_val is not None or split > 0:
-        val_acc, val_loss = history.values['epoch_val_acc'][-1], history.values['epoch_val_loss'][-1]
+        #val_acc, val_loss = history.values['epoch_val_acc'][-1], history.values['epoch_val_loss'][-1]
+        val_acc, val_loss = history.values['epoch_val_accuracy'][-1], history.values['epoch_val_loss'][-1]
         print ("\nLoss on validation set:"  + str(val_loss) + " Accuracy on validation set: " + str(val_acc))
     else:
         val_acc = None
@@ -127,29 +133,44 @@ def run_keras_2d(data_name, layers, epochs, display=True, split=0.25, verbose=Tr
     X_val, y2, _ = get_data_set(val_dataset)
     X_test, y3, _ = get_data_set(test_dataset)
     # Categorize the labels
-    y_train = np_utils.to_categorical(y, num_classes) # one-hot
+    y_train = keras.utils.to_categorical(y, num_classes) # one-hot
     y_val = y_test = None
     if X_val is not None:
-        y_val = np_utils.to_categorical(y2, num_classes) # one-hot        
+        y_val = keras.utils.to_categorical(y2, num_classes) # one-hot        
     if X_test is not None:
-        y_test = np_utils.to_categorical(y3, num_classes) # one-hot
+        y_test = keras.utils.to_categorical(y3, num_classes) # one-hot
     val_acc, test_acc = 0, 0
     for trial in range(trials):
         # Reset the weights
         # See https://github.com/keras-team/keras/issues/341
-        session = K.get_session()
+        #session = K.get_session()
+        #https://stackoverflow.com/questions/58255821/how-to-use-k-get-session-in-tensorflow-2-0-or-how-to-migrate-it
+        session = tf.compat.v1.keras.backend.get_session()  
         for layer in layers:
             for v in layer.__dict__:
                 v_arg = getattr(layer, v)
                 if hasattr(v_arg, 'initializer'):
                     initializer_func = getattr(v_arg, 'initializer')
-                    initializer_func.run(session=session)
+                    if initializer_func is not None: #added
+                        initializer_func.run(session=session)
         # Run the model
         model, history, vacc, tacc, = \
                run_keras(X_train, y_train, X_val, y_val, X_test, y_test, layers, epochs,
                          split=split, verbose=verbose)
         val_acc += vacc if vacc else 0
         test_acc += tacc if tacc else 0
+
+        #3G
+        test_points = np.array([[-1,0], [1,0], [0,-11], [0,1], [-1,-1], [-1,1], [1,1], [1,-1]])
+        w,w_0 = layers[0].get_weights()
+
+        w=np.transpose(w)
+        print(w)
+        for p in test_points:
+            #print(f"point {p}:  prediction: {model.predict(np.array(p))}")
+            print(f"point {p}:  prediction: {np.dot(w,np.transpose(p)) + w_0}")
+        
+
         if display:
             # plot classifier landscape on training data
             plot_heat(X_train, y, model)
@@ -167,10 +188,11 @@ def run_keras_2d(data_name, layers, epochs, display=True, split=0.25, verbose=Tr
             plt.title('Epoch val_loss and loss')
             plt.show()
             # Plot epoch accuracy
-            history.plot(['epoch_acc', 'epoch_val_acc'])
+            #history.plot(['epoch_acc', 'epoch_val_acc'])
+            history.plot(['epoch_accuracy', 'epoch_val_accuracy'])
             plt.xlabel('epoch')
             plt.ylabel('accuracy')
-            plt.title('Epoch val_acc and acc')
+            plt.title('Epoch val_accURACY and accURACY')
             plt.show()
     if val_acc:
         print ("\nAvg. validation accuracy:"  + str(val_acc/trials))
@@ -277,7 +299,7 @@ def get_MNIST_data(shift=0):
     return (X_train, y1), (X_val, y2)
 
 # Example Usage:
-# train, validation = get_MNIST_data()
+#train, validation = get_MNIST_data()
 
 def run_keras_fc_mnist(train, test, layers, epochs, split=0.1, verbose=True, trials=1):
     (X_train, y1), (X_val, y2) = train, test
@@ -287,20 +309,23 @@ def run_keras_fc_mnist(train, test, layers, epochs, split=0.1, verbose=True, tri
     X_val = X_val.reshape((X_val.shape[0], m*m))
     # Categorize the labels
     num_classes = 10
-    y_train = np_utils.to_categorical(y1, num_classes)
-    y_val = np_utils.to_categorical(y2, num_classes)
+    y_train = keras.utils.to_categorical(y1, num_classes)
+    y_val = keras.utils.to_categorical(y2, num_classes)
     # Train, use split for validation
     val_acc, test_acc = 0, 0
     for trial in range(trials):
         # Reset the weights
         # See https://github.com/keras-team/keras/issues/341
-        session = K.get_session()
+        #session = K.get_session()            
+        # #https://stackoverflow.com/questions/58255821/how-to-use-k-get-session-in-tensorflow-2-0-or-how-to-migrate-it
+        session = tf.compat.v1.keras.backend.get_session()
         for layer in layers:
             for v in layer.__dict__:
                 v_arg = getattr(layer, v)
                 if hasattr(v_arg, 'initializer'):
                     initializer_func = getattr(v_arg, 'initializer')
-                    initializer_func.run(session=session)
+                    if initializer_func is not None: #added
+                        initializer_func.run(session=session)
         # Run the model
         model, history, vacc, tacc = \
                 run_keras(X_train, y_train, X_val, y_val, None, None, layers, epochs, split=split, verbose=verbose)
@@ -320,20 +345,23 @@ def run_keras_cnn_mnist(train, test, layers, epochs, split=0.1, verbose=True, tr
     X_val = X_val.reshape((X_val.shape[0], m, m, 1))
     # Categorize the labels
     num_classes = 10
-    y_train = np_utils.to_categorical(y1, num_classes)
-    y_val = np_utils.to_categorical(y2, num_classes)
+    y_train = keras.utils.to_categorical(y1, num_classes)
+    y_val = keras.utils.to_categorical(y2, num_classes)
     # Train, use split for validation
     val_acc, test_acc = 0, 0
     for trial in range(trials):
         # Reset the weights
         # See https://github.com/keras-team/keras/issues/341
-        session = K.get_session()
+        #session = K.get_session()
+        #https://stackoverflow.com/questions/58255821/how-to-use-k-get-session-in-tensorflow-2-0-or-how-to-migrate-it
+        session = tf.compat.v1.keras.backend.get_session()
         for layer in layers:
             for v in layer.__dict__:
                 v_arg = getattr(layer, v)
                 if hasattr(v_arg, 'initializer'):
                     initializer_func = getattr(v_arg, 'initializer')
-                    initializer_func.run(session=session)
+                    if initializer_func is not None: #added
+                        initializer_func.run(session=session)
         # Run the model
         model, history, vacc, tacc = \
                 run_keras(X_train, y_train, X_val, y_val, None, None, layers, epochs, split=split, verbose=verbose)
@@ -344,11 +372,87 @@ def run_keras_cnn_mnist(train, test, layers, epochs, split=0.1, verbose=True, tr
     if test_acc:
         print ("\nAvg. test accuracy:"  + str(test_acc/trials))
 
+
+"""
 # Example usage:
-# train, validation = get_MNIST_data()
+train, validation = get_MNIST_data()
 # layers = [Dense(input_dim=???, units=???, activation='softmax')]
-# run_keras_fc_mnist(train, validation, layers, 1, split=0.1, verbose=True, trials=5)
+(X_train, y1) = train
+layers = [Dense(input_dim=X_train.shape[1]**2, units=10, activation='softmax')]
+run_keras_fc_mnist(train, validation, layers, 1, split=0.1, verbose=False, trials=5)
 # Same pattern applies to the function: run_keras_cnn_mnist
+
+"""
+print("don't worry the next will magically get 0.59")
+
+train, validation = get_MNIST_data()
+run_keras_fc_mnist(train, validation, [
+    Dense(input_dim=28*28, units=10, activation="softmax")
+], 1, split=0.1, verbose=False, trials=5)
+
+"""
+print("This is the kernel initiali9ser test they want me to do:")
+
+train, validation = get_MNIST_data()
+# layers = [Dense(input_dim=???, units=???, activation='softmax')]
+(X_train, y1) = train
+layers = [Dense(input_dim=X_train.shape[1]**2, units=10, activation='softmax', kernel_initializer=VarianceScaling(scale=0.001, mode='fan_in', distribution='normal', seed=None))]
+run_keras_fc_mnist(train, validation, layers, 1, split=0.1, verbose=False, trials=5)
+# Same pattern applies to the function: run_keras_cnn_mnist
+"""
+print("Thuis is linear scaling")
+
+train, validation = get_MNIST_data()
+train = train[0] / 255, train[1]
+validation = validation[0] / 255, validation[1]
+
+"""
+run_keras_fc_mnist(train, validation, [
+    Dense(input_dim=28*28, units=10, activation="softmax")
+], 1, split=0.1, verbose=False, trials=5)
+
+
+
+train, validation = get_MNIST_data()
+train = train[0] / 255, train[1]
+validation = validation[0] / 255, validation[1]
+
+
+for epoch in [5, 10, 15]:
+    print(f"\n\nEPOCH: {epoch}:")
+    run_keras_fc_mnist(train, validation, [
+        Dense(input_dim=28*28, units=10, activation="softmax")
+    ], epoch, split=0.1, verbose=False, trials=5)
+"""
+""" print(f"\n\n Test of Relu with 1 epoch: ")
+
+def get_arch(relus):
+    return [
+        Dense(input_dim=28*28, units=relus, activation='relu'),
+        Dense(units=10, activation="softmax"),
+    ]
+
+for relus in [128, 256, 512, 1024]:
+    print(f"\n\n RELUS:{relus}")
+    run_keras_fc_mnist(train, validation,
+        get_arch(relus), 1, split=0.1, verbose=False, trials=5)
+
+run_keras_fc_mnist(train, validation,
+    get_arch(relus), 1, split=0.1, verbose=False, trials=5) """
+
+"""
+print("\n\n *** test of 512 + 256 relus")
+
+arch = [
+        Dense(input_dim=28*28, units=512, activation='relu'),
+        Dense(units=256, activation='relu'),
+        Dense(units=10, activation="softmax"),
+    ]
+
+run_keras_fc_mnist(train, validation,
+    arch, 1, split=0.1, verbose=False, trials=2)
+
+"""
 
 ######################################################################
 # Plotting Functions
@@ -409,10 +513,12 @@ def plot_separator(ax, th, th_0):
     # xmin boundary crossing is when xmin th[0] + y th[1] + th_0 = 0
     # that is, y = (-th_0 - xmin th[0]) / th[1]
     if abs(th[1,0]) > eps:
-        pts += [np.array([x, (-th_0 - x * th[0,0]) / th[1,0]]) \
+        #pts += [np.array([x, (-th_0 - x * th[0,0]) / th[1,0]]) \
+        pts += [np.array([x, (-th_0 - x * th[0,0]) / th[1,0]], dtype=object) \
                                                         for x in (xmin, xmax)]
     if abs(th[0,0]) > 1.0e-6:
-        pts += [np.array([(-th_0 - y * th[1,0]) / th[0,0], y]) \
+        #pts += [np.array([(-th_0 - y * th[1,0]) / th[0,0], y]) \
+        pts += [np.array([(-th_0 - y * th[1,0]) / th[0,0], y], dtype=object) \
                                                          for y in (ymin, ymax)]
     in_pts = []
     for p in pts:
@@ -442,10 +548,15 @@ def plot_separator(ax, th, th_0):
     else:
         print('Separator not in plot range')
 
-def plot_decision(data, cl, diff=False):
-    layers = archs(cl)[0]
-    X, y, model = run_keras_2d(data, layers, 10, trials=1, verbose=False, display=False)
-    ax = plot_heat(X,y,model)
+#def plot_decision(data, cl, diff=False):
+def plot_decision(data, cl, model, diff=False):
+    layers = archs(cl)[model]
+    #X, y, model = run_keras_2d(data, layers, 10, trials=1, verbose=False, display=False)
+    X, y, model = run_keras_2d(data, layers, 10, trials=5, verbose=False, display=False)
+    #ax = plot_heat(X,y,model)
+
+    ### temp removed below
+    """
     W = layers[0].get_weights()[0]
     W0 = layers[0].get_weights()[1].reshape((cl,1))
     if diff:
@@ -454,4 +565,93 @@ def plot_decision(data, cl, diff=False):
     else:
         for i in range(cl):
             plot_separator(ax, W[:,i:i+1], W0[i:i+1,:])
-    plt.show()
+    """
+    #plt.show()
+
+"""
+data='4'
+print(f"\n data: {data} \n")
+for model in range(5):
+    print(f"\n ********  MODEL: {model} ********* ")
+    plot_decision(data,2,model)
+"""
+"""
+for model in range(5):
+    print(f"\n **************** model {model+1} **************** ")
+    run_keras_2d("1", archs(2)[model], 10, display=False, verbose=False, trials=5)
+    print(f" ^^^^ target = 98% ^^^")
+    run_keras_2d("2", archs(2)[model], 10, display=False, verbose=False, trials=5)
+    print(f" ^^^^ target = 89.5% ^^^")
+    run_keras_2d("3", archs(2)[model], 10, display=False, verbose=False, trials=5)
+    print(f" ^^^^ target = 95% ^^^")
+    run_keras_2d("4", archs(2)[model], 10, display=False, verbose=False, trials=5)
+    print(f" ^^^^ target = 93% ^^^")
+"""
+"""
+model = [Dense(input_dim=2, units=200, activation='relu'),
+             Dense(units=200, activation='relu'),
+             Dense(units=2, activation="softmax")]
+
+run_keras_2d("3", model, 100, display=True, verbose=False, trials=1)
+
+"""
+"""
+for model in range(5):
+    print(f"\n **************** model {model+1} **************** ")
+    run_keras_2d("3class", archs(3)[model], 10, display=False, verbose=False, trials=5, split = 0.5)
+    print(f" ^^^^")
+""" 
+#run_keras_2d("3class", archs(3)[0], 10, display=False, verbose=False, trials=1, split = 0.5)
+#print("r")
+
+##5j
+
+"""
+Build a convolutional network with the following structure:
+
+A convolutional layer with 32 filters of size 3 × 3, with a ReLU activation
+A max pooling layer with size 2 × 2
+A convolutional layer with 64 filters of size 3 × 3, with ReLU activation
+A max pooling layer with size 2 × 2
+A flatten layer
+A fully connected layer with 128 neurons, with ReLU activation
+A dropout layer with drop probability 0.5
+A fully-connected layer with 10 neurons with softmax
+"""
+
+(X_train, y1) = train
+#layers = [Dense(input_dim=X_train.shape[1]**2, units=10, activation='softmax')]
+
+"""
+model = [Dense(input_dim=2, units=200, activation='relu'),
+             Dense(units=200, activation='relu'),
+             Dense(units=2, activation="softmax")]
+"""
+
+print("Now randomly shifting input by 20")
+train_20, validation_20 = get_MNIST_data(shift=20)
+
+model = [Conv2D(32,(3,3),activation='relu'),MaxPooling2D(), Conv2D(64,(3,3),activation='relu'), 
+    MaxPooling2D(), Flatten(),Dense(128,activation='relu'),Dropout(0.5),Dense(10,activation='softmax')]
+#run_keras_cnn_mnist(train,validation,model,1)
+
+fc_model = [
+        Dense(input_dim=48*48, units=512, activation='relu'),
+        Dense(units=256, activation='relu'),
+        Dense(units=10, activation="softmax"),
+    ]
+
+
+
+print("applying linear scaling)")
+train_20 = train_20[0] / 255, train_20[1]
+validation_20 = validation_20[0] / 255, validation_20[1]
+
+run_keras_fc_mnist(train_20, validation_20,
+    fc_model, 1, verbose=False, trials=1)
+
+print("^^^ fc result on shifted data ^^^")
+
+run_keras_cnn_mnist(train_20,validation_20,model,1)
+
+print("^^^ cnn result on shifted data ^^^")
