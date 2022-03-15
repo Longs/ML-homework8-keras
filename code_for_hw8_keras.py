@@ -628,6 +628,8 @@ model = [Dense(input_dim=2, units=200, activation='relu'),
              Dense(units=2, activation="softmax")]
 """
 
+"""
+
 print("Now randomly shifting input by 20")
 train_20, validation_20 = get_MNIST_data(shift=20)
 
@@ -655,3 +657,21 @@ print("^^^ fc result on shifted data ^^^")
 run_keras_cnn_mnist(train_20,validation_20,model,1)
 
 print("^^^ cnn result on shifted data ^^^")
+"""
+stride=1
+tsize=1000
+imsize=1024
+kernel_s=2
+batch=1
+data=get_image_data_1d(tsize,imsize,0.1)
+(X_train,Y_train,X_val,Y_val,X_test,Y_test)=data
+layer1=keras.layers.Conv1D(filters=1, kernel_size=kernel_s, strides=stride,use_bias=False,activation='relu',batch_size=batch,input_shape=(imsize,1),padding='same')
+layer3=Dense(units=1, activation='linear',use_bias=False)
+layers=[layer1,Flatten(),layer3]
+model=Sequential()
+for layer in layers:
+    model.add(layer)
+model.compile(loss='mse', optimizer=Adam())    
+model.layers[0].set_weights([np.array([1/2,1/2]).reshape(2,1,1)])
+model.layers[-1].set_weights([np.ones(imsize).reshape(imsize,1)])
+model.evaluate(X_test,Y_test)
